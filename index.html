@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Worker UPI QR</title>
+<meta name="description" content="Create a UPI QR code for each worker. Every payment carries the worker's name so the owner knows who took it.">
+<meta name="theme-color" content="#1f6f5c">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Worker QR">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a66;
+    --line: #e3e1dc; --accent: #1f6f5c; --accent-text: #ffffff;
+    --danger: #b3261e; --warn-bg: #fff4e0; --warn-text: #7a4b00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --card: #222220; --text: #eeede9; --muted: #a3a19b;
+      --line: #3a3936; --accent: #5cc4a8; --accent-text: #0f2a23;
+      --danger: #f2b8b5; --warn-bg: #3a2c12; --warn-text: #f5d08a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main {
+    max-width: 1040px; margin: 0 auto;
+    padding: 20px max(16px, env(safe-area-inset-right)) 64px max(16px, env(safe-area-inset-left));
+  }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  header img { width: 36px; height: 36px; }
+  h1 { font-size: 22px; margin: 0; }
+  .sub { color: var(--muted); margin: 4px 0 20px; max-width: 60ch; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 20px; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .fields { grid-template-columns: 1fr; } }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
+  input {
+    font: inherit; font-size: 16px; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input.bad { border-color: var(--danger); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; min-height: 18px; }
+  .hint.bad { color: var(--danger); }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .bar .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, a.btn {
+    font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; text-align: center;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 10px; padding: 9px 14px; min-height: 40px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  button:hover, a.btn:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.danger { color: var(--danger); }
+  button:disabled, a.btn.disabled { opacity: .45; pointer-events: none; }
+
+  .notice { background: var(--warn-bg); color: var(--warn-text); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-bottom: 16px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; }
+  .num { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .qr { background: #fff; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .qr svg { width: 100%; max-width: 220px; height: auto; display: block; }
+  .qr .empty { color: #6b6a66; font-size: 13px; text-align: center; padding: 60px 8px; }
+  .qr .qr-name { color: #1d1d1b; font-weight: 700; font-size: 16px; text-align: center; }
+  .qr .qr-upi { color: #6b6a66; font-size: 12px; text-align: center; word-break: break-all; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .row .full { grid-column: 1 / -1; }
+  .mobile-only { display: none; }
+  @media (hover: none) and (pointer: coarse) { .mobile-only { display: inline-flex; } }
+
+  details { margin-top: 24px; color: var(--muted); font-size: 14px; }
+  summary { cursor: pointer; color: var(--text); font-weight: 600; }
+  details ol { padding-left: 20px; }
+  code { font: 12px/1.4 ui-monospace, Consolas, monospace; word-break: break-all; }
+
+  @media print {
+    body { background: #fff; }
+    main { max-width: none; padding: 0; }
+    header, .sub, .panel, .bar, .notice, details, .card-head, .card .field, .row { display: none !important; }
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+    .card { border: 1px solid #bbb; break-inside: avoid; }
+    .card.invalid { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="icon.svg" alt="">
+    <h1>Worker UPI QR</h1>
+  </header>
+  <p class="sub">Make one QR code for each worker. Customers scan it and pay. The worker's name goes in the payment note, so the owner can see who took each payment.</p>
+
+  <section class="panel">
+    <h2>Shop details</h2>
+    <div class="fields">
+      <div>
+        <label for="upi">Shop UPI ID</label>
+        <input id="upi" placeholder="yourname@okaxis" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="email">
+        <div class="hint" id="upi-hint">All workers use this UPI ID, unless you give a worker their own.</div>
+      </div>
+      <div>
+        <label for="shop">Shop name</label>
+        <input id="shop" placeholder="e.g. Style Cut Salon" autocomplete="off">
+        <div class="hint">Shown to the customer when they scan.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="notice" id="notice" hidden>Enter a valid UPI ID above to create the QR codes.</div>
+
+  <div class="bar">
+    <h2 style="margin:0">Workers (<span id="count">0</span>)</h2>
+    <div class="actions">
+      <button class="primary" id="add">+ Add worker</button>
+      <button id="print">Print all</button>
+      <button id="reset" class="danger">Reset</button>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <details>
+    <summary>How to test</summary>
+    <ol>
+      <li>Enter your UPI ID and shop name, then add your workers.</li>
+      <li>Scan one QR with GPay, PhonePe or Paytm and pay ₹1.</li>
+      <li>Open the payment in your own UPI app and check that the worker's name shows in the note.</li>
+      <li>If a worker has their own UPI ID, enter it on their card. Their QR will pay that ID instead.</li>
+    </ol>
+    <p>Everything is saved only in this browser. Nothing is sent to any server.</p>
+  </details>
+</main>
+
+<script>
+  const STORE_KEY = "worker-upi-qr-v1";
+  const UPI_RE = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9]{1,63}$/;
+
+  const $ = (id) => document.getElementById(id);
+  const grid = $("grid"), upiEl = $("upi"), shopEl = $("shop");
+
+  let state = load() || {
+    upi: "",
+    shop: "",
+    workers: [{ name: "Worker 1", upi: "" }, { name: "Worker 2", upi: "" }, { name: "Worker 3", upi: "" }, { name: "Worker 4", upi: "" }]
+  };
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch { return null; }
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {}
+  }
+
+  const validUpi = (v) => UPI_RE.test(v.trim());
+
+  function payeeFor(w) {
+    const own = w.upi.trim();
+    if (own) return validUpi(own) ? own : null;
+    return validUpi(state.upi) ? state.upi.trim() : null;
+  }
+
+  function upiLink(w) {
+    const pa = payeeFor(w);
+    if (!pa) return null;
+    const params = { pa, pn: state.shop.trim() || "Shop", cu: "INR" };
+    if (w.name.trim()) params.tn = w.name.trim();
+    // Some UPI apps don't decode %40, so keep "@" literal.
+    return "upi://pay?" + new URLSearchParams(params).toString().replace(/\+/g, "%20").replace(/%40/g, "@");
+  }
+
+  function makeQr(text) {
+    const qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    return qr;
+  }
+
+  function qrCanvas(w, link) {
+    const qr = makeQr(link);
+    const count = qr.getModuleCount(), cell = 12, pad = 48;
+    const qrSize = count * cell;
+    const width = qrSize + pad * 2, top = 96, bottom = 110;
+    const c = document.createElement("canvas");
+    c.width = width; c.height = top + qrSize + bottom;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.textAlign = "center"; ctx.fillStyle = "#1d1d1b";
+    ctx.font = "600 34px system-ui, sans-serif";
+    ctx.fillText(state.shop.trim() || "Scan to pay", width / 2, 62);
+    for (let r = 0; r < count; r++)
+      for (let col = 0; col < count; col++)
+        if (qr.isDark(r, col)) ctx.fillRect(pad + col * cell, top + r * cell, cell, cell);
+    ctx.font = "700 40px system-ui, sans-serif";
+    ctx.fillText(w.name.trim() || "Worker", width / 2, top + qrSize + 56);
+    ctx.font = "24px system-ui, sans-serif"; ctx.fillStyle = "#6b6a66";
+    ctx.fillText(payeeFor(w), width / 2, top + qrSize + 94);
+    return c;
+  }
+
+  const fileName = (w) => "QR-" + (w.name.trim() || "worker").replace(/[^\w-]+/g, "_") + ".png";
+
+  function download(w) {
+    const link = upiLink(w); if (!link) return;
+    const a = document.createElement("a");
+    a.download = fileName(w);
+    a.href = qrCanvas(w, link).toDataURL("image/png");
+    a.click();
+  }
+
+  async function share(w) {
+    const link = upiLink(w); if (!link) return;
+    const blob = await new Promise((res) => qrCanvas(w, link).toBlob(res, "image/png"));
+    const file = new File([blob], fileName(w), { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: `${w.name} – UPI QR` }); } catch {}
+    } else {
+      download(w);
+    }
+  }
+
+  function field(labelText, value, placeholder, onInput, opts = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+    const label = document.createElement("label");
+    label.textContent = labelText;
+    const input = document.createElement("input");
+    input.value = value;
+    input.placeholder = placeholder;
+    input.autocomplete = "off";
+    if (opts.upi) { input.autocapitalize = "off"; input.spellcheck = false; input.inputMode = "email"; }
+    input.addEventListener("input", () => onInput(input));
+    wrap.append(label, input);
+    return { wrap, input };
+  }
+
+  function updateCard(card, w) {
+    const link = upiLink(w);
+    const box = card.querySelector(".qr");
+    box.replaceChildren();
+    card.classList.toggle("invalid", !link);
+    if (link) {
+      box.insertAdjacentHTML("beforeend", makeQr(link).createSvgTag({ cellSize: 4, margin: 2, scalable: true }));
+      const n = document.createElement("div"); n.className = "qr-name"; n.textContent = w.name.trim() || "Worker";
+      const u = document.createElement("div"); u.className = "qr-upi"; u.textContent = payeeFor(w);
+      box.append(n, u);
+    } else {
+      const e = document.createElement("div"); e.className = "empty";
+      e.textContent = w.upi.trim() ? "This worker's UPI ID looks wrong." : "Enter the shop UPI ID to see this QR.";
+      box.append(e);
+    }
+    card.querySelectorAll("[data-needs-link]").forEach((b) => b.disabled = !link);
+    const pay = card.querySelector("a.pay");
+    if (link) { pay.href = link; pay.classList.remove("disabled"); } else { pay.removeAttribute("href"); pay.classList.add("disabled"); }
+  }
+
+  function render() {
+    grid.replaceChildren();
+    state.workers.forEach((w, i) => {
+      const card = document.createElement("article");
+      card.className = "card";
+
+      const head = document.createElement("div");
+      head.className = "card-head";
+      const num = document.createElement("span"); num.className = "num"; num.textContent = `Worker ${i + 1}`;
+      const rm = document.createElement("button"); rm.className = "danger"; rm.textContent = "Remove";
+      rm.addEventListener("click", () => {
+        if (!confirm(`Remove ${w.name || "this worker"}?`)) return;
+        state.workers.splice(i, 1); save(); render();
+      });
+      head.append(num, rm);
+
+      const name = field("Name", w.name, "Worker name", (el) => { w.name = el.value; save(); updateCard(card, w); });
+      const own = field("Own UPI ID (optional)", w.upi, "Leave empty to use shop UPI", (el) => {
+        w.upi = el.value;
+        el.classList.toggle("bad", !!el.value.trim() && !validUpi(el.value));
+        save(); updateCard(card, w);
+      }, { upi: true });
+      own.input.classList.toggle("bad", !!w.upi.trim() && !validUpi(w.upi));
+
+      const qr = document.createElement("div"); qr.className = "qr";
+
+      const row = document.createElement("div"); row.className = "row";
+      const dl = document.createElement("button"); dl.textContent = "Download"; dl.dataset.needsLink = "";
+      dl.addEventListener("click", () => download(w));
+      const sh = document.createElement("button"); sh.textContent = "Share"; sh.dataset.needsLink = "";
+      sh.addEventListener("click", () => share(w));
+      const pay = document.createElement("a"); pay.className = "btn pay full mobile-only"; pay.textContent = "Open in UPI app (test)";
+      row.append(dl, sh, pay);
+
+      card.append(head, name.wrap, own.wrap, qr, row);
+      grid.append(card);
+      updateCard(card, w);
+    });
+    $("count").textContent = state.workers.length;
+    $("print").disabled = !state.workers.some((w) => upiLink(w));
+  }
+
+  function refreshShop() {
+    const v = state.upi.trim();
+    const bad = !!v && !validUpi(v);
+    upiEl.classList.toggle("bad", bad);
+    const hint = $("upi-hint");
+    hint.classList.toggle("bad", bad);
+    hint.textContent = bad ? "This doesn't look like a UPI ID. It should be like name@bank." : "All workers use this UPI ID, unless you give a worker their own.";
+    $("notice").hidden = validUpi(v) || state.workers.every((w) => w.upi.trim());
+  }
+
+  upiEl.value = state.upi;
+  shopEl.value = state.shop;
+  upiEl.addEventListener("input", () => { state.upi = upiEl.value; save(); refreshShop(); render(); });
+  shopEl.addEventListener("input", () => { state.shop = shopEl.value; save(); render(); });
+
+  $("add").addEventListener("click", () => {
+    state.workers.push({ name: `Worker ${state.workers.length + 1}`, upi: "" });
+    save(); render(); refreshShop();
+    const inputs = grid.querySelectorAll(".card:last-child input");
+    if (inputs[0]) { inputs[0].focus(); inputs[0].select(); inputs[0].scrollIntoView({ block: "center", behavior: "smooth" }); }
+  });
+  $("print").addEventListener("click", () => window.print());
+  $("reset").addEventListener("click", () => {
+    if (!confirm("Clear the UPI ID, shop name and all workers?")) return;
+    try { localStorage.removeItem(STORE_KEY); } catch {}
+    location.reload();
+  });
+
+  refreshShop();
+  render();
+</script>
+</body>
+</html>
